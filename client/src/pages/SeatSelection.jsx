@@ -1,30 +1,35 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 import axios from "axios";
 
-// Use your Render backend URL
+// Your backend deployed URL
 const BACKEND_URL = "https://movie-booking-app-backend-46kw.onrender.com";
-
-// Connect with socket
-const socket = io(BACKEND_URL, {
-    transports: ["websocket"],
-    withCredentials: true,
-});
 
 const SeatSelection = ({ showId }) => {
     const [seats, setSeats] = useState([]);
     const [selected, setSelected] = useState([]);
+    const socketRef = useRef(null); // To keep socket persistent
 
     useEffect(() => {
-        // Join the show room
+        // Connect socket only once
+        if (!socketRef.current) {
+            socketRef.current = io(BACKEND_URL, {
+                transports: ["websocket"],
+                withCredentials: true,
+            });
+        }
+
+        const socket = socketRef.current;
+
+        // Join room for the selected show
         socket.emit("joinRoom", showId);
 
-        // Listen for real-time seat updates
+        // Listen for seat updates
         socket.on("seatUpdate", (updatedSeats) => {
             setSeats(updatedSeats);
         });
 
-        // Initial fetch
+        // Fetch initial seat data
         axios.get(`${BACKEND_URL}/api/shows`)
             .then((res) => {
                 const show = res.data.find((s) => s._id === showId);
@@ -36,8 +41,8 @@ const SeatSelection = ({ showId }) => {
                 console.error("Failed to load seats:", err);
             });
 
-        // Cleanup
         return () => {
+            // Cleanup listeners
             socket.off("seatUpdate");
             socket.off("seatSelectResult");
         };
@@ -49,11 +54,15 @@ const SeatSelection = ({ showId }) => {
             return;
         }
 
+        const socket = socketRef.current;
+
+        // Emit seat selection request
         socket.emit("selectSeat", { showId, index });
 
+        // Handle result
         socket.once("seatSelectResult", ({ success, message }) => {
             if (success) {
-                setSelected([...selected, index]);
+                setSelected((prev) => [...prev, index]);
             } else {
                 alert(message || "Seat booking failed.");
             }
