@@ -1,102 +1,82 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import io from "socket.io-client";
+import { io } from "socket.io-client";
+import axios from "axios";
 
-const socket = io("http://localhost:5000");
+// Use your Render backend URL
+const BACKEND_URL = "https://movie-booking-app-backend-46kw.onrender.com";
 
-function SeatSelection() {
-    const { showId } = useParams();
-    const navigate = useNavigate();
+// Connect with socket
+const socket = io(BACKEND_URL, {
+    transports: ["websocket"],
+    withCredentials: true,
+});
+
+const SeatSelection = ({ showId }) => {
     const [seats, setSeats] = useState([]);
-    const [isBooking, setIsBooking] = useState(false);
+    const [selected, setSelected] = useState([]);
 
     useEffect(() => {
-        if (!showId) return;
-
+        // Join the show room
         socket.emit("joinRoom", showId);
 
+        // Listen for real-time seat updates
         socket.on("seatUpdate", (updatedSeats) => {
             setSeats(updatedSeats);
-            setIsBooking(false);
         });
 
-        socket.on("seatSelectResult", (result) => {
-            if (!result.success) {
-                alert(result.message || "Failed to book seat.");
-                setIsBooking(false);
-            }
-        });
+        // Initial fetch
+        axios.get(`${BACKEND_URL}/api/shows`)
+            .then((res) => {
+                const show = res.data.find((s) => s._id === showId);
+                if (show) {
+                    setSeats(show.seats);
+                }
+            })
+            .catch((err) => {
+                console.error("Failed to load seats:", err);
+            });
 
+        // Cleanup
         return () => {
             socket.off("seatUpdate");
             socket.off("seatSelectResult");
         };
     }, [showId]);
 
-    const selectSeat = (index) => {
-        if (isBooking || seats[index].booked) return;
-        setIsBooking(true);
+    const handleSelect = (index) => {
+        if (seats[index].booked) {
+            alert("Seat already booked.");
+            return;
+        }
+
         socket.emit("selectSeat", { showId, index });
+
+        socket.once("seatSelectResult", ({ success, message }) => {
+            if (success) {
+                setSelected([...selected, index]);
+            } else {
+                alert(message || "Seat booking failed.");
+            }
+        });
     };
 
     return (
-        <div style={{ padding: "20px", maxWidth: "600px", margin: "0 auto" }}>
-            <button
-                onClick={() => navigate("/")}
-                style={{
-                    marginBottom: "20px",
-                    backgroundColor: "#f3f3f3",
-                    border: "1px solid #ccc",
-                    padding: "8px 16px",
-                    borderRadius: "5px",
-                    cursor: "pointer",
-                }}
-            >
-                ← Go Back
-            </button>
-
-            <h2 style={{ fontSize: "24px", textAlign: "center", marginBottom: "10px" }}>
-                Select Your Seat
-            </h2>
-            <p style={{ textAlign: "center", color: "#666" }}>
-                Booked: {seats.filter((s) => s.booked).length} / {seats.length}
-            </p>
-
-            <div
-                style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(8, 1fr)",
-                    gap: "10px",
-                    marginTop: "20px",
-                }}
-            >
-                {seats.map((seat, i) => (
+        <div className="seat-container">
+            <h2>Seat Selection</h2>
+            <div className="seats-grid">
+                {seats.map((seat, index) => (
                     <button
-                        key={i}
-                        onClick={() => selectSeat(i)}
-                        disabled={seat.booked || isBooking}
-                        style={{
-                            padding: "10px",
-                            backgroundColor: seat.booked ? "#999" : "#4CAF50",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "5px",
-                            cursor: seat.booked ? "not-allowed" : "pointer",
-                            opacity: isBooking && !seat.booked ? 0.7 : 1,
-                        }}
+                        key={index}
+                        className={`seat ${seat.booked ? "booked" : selected.includes(index) ? "selected" : ""}`}
+                        onClick={() => handleSelect(index)}
+                        disabled={seat.booked}
                     >
-                        {i + 1}
+                        {index + 1}
                     </button>
                 ))}
             </div>
-
-            {isBooking && (
-                <p style={{ textAlign: "center", marginTop: "20px", color: "#999" }}>
-                    Booking seat...
-                </p>
-            )}
         </div>
     );
-}
+};
 
 export default SeatSelection;

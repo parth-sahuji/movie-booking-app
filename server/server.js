@@ -8,32 +8,36 @@ const cors = require("cors");
 const app = express();
 const server = http.createServer(app);
 
+// Load from environment or use defaults
 const PORT = process.env.PORT || 10000;
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "https://movie-booking-app-yosx.vercel.app";
 
-// Enable CORS for frontend origin
-app.use(cors({ origin: FRONTEND_ORIGIN }));
-app.use(express.json());
+// Enable CORS for both REST API and WebSocket
+app.use(cors({
+  origin: FRONTEND_ORIGIN,
+  methods: ["GET", "POST", "DELETE"],
+  credentials: true
+}));
 
-// Socket.io setup with CORS
 const io = new Server(server, {
   cors: {
     origin: FRONTEND_ORIGIN,
     methods: ["GET", "POST"],
-  },
+    credentials: true
+  }
 });
 
-// In-memory show data
+// In-memory storage of shows and seats
 let shows = [
   {
     _id: "1",
     title: "Avengers",
     time: "6:00 PM",
-    seats: Array.from({ length: 40 }, () => ({ booked: false })),
-  },
+    seats: Array.from({ length: 40 }, () => ({ booked: false }))
+  }
 ];
 
-// === REST API Routes ===
+app.use(express.json());
 
 // GET all shows
 app.get("/api/shows", (req, res) => {
@@ -43,16 +47,15 @@ app.get("/api/shows", (req, res) => {
 // POST a new show
 app.post("/api/shows", (req, res) => {
   const { title, time } = req.body;
-
   if (!title || !time) {
     return res.status(400).json({ error: "Title and time are required" });
   }
 
   const newShow = {
-    _id: Date.now().toString(),
+    _id: String(Date.now()),
     title,
     time,
-    seats: Array.from({ length: 40 }, () => ({ booked: false })),
+    seats: Array.from({ length: 40 }, () => ({ booked: false }))
   };
 
   shows.push(newShow);
@@ -62,9 +65,8 @@ app.post("/api/shows", (req, res) => {
 // DELETE a show
 app.delete("/api/shows/:id", (req, res) => {
   const { id } = req.params;
-  const exists = shows.find((s) => s._id === id);
-
-  if (!exists) {
+  const showExists = shows.find((s) => s._id === id);
+  if (!showExists) {
     return res.status(404).json({ error: "Show not found" });
   }
 
@@ -72,9 +74,9 @@ app.delete("/api/shows/:id", (req, res) => {
   res.status(204).send();
 });
 
-// === WebSocket Events ===
+// WebSocket Events
 io.on("connection", (socket) => {
-  console.log(`🔌 New client: ${socket.id}`);
+  console.log(`🔌 Client connected: ${socket.id}`);
 
   socket.on("joinRoom", (showId) => {
     const show = shows.find((s) => s._id === showId);
@@ -89,14 +91,11 @@ io.on("connection", (socket) => {
     if (!show) return;
 
     if (!show.seats[index].booked) {
-      show.seats[index].booked = true;
+      show.seats[index] = { booked: true };
       io.to(showId).emit("seatUpdate", show.seats);
       socket.emit("seatSelectResult", { success: true, index });
     } else {
-      socket.emit("seatSelectResult", {
-        success: false,
-        message: "Seat already booked",
-      });
+      socket.emit("seatSelectResult", { success: false, message: "Seat already booked" });
     }
   });
 
@@ -105,7 +104,7 @@ io.on("connection", (socket) => {
   });
 });
 
-// === Start the server ===
+// Start the server
 server.listen(PORT, () => {
-  console.log(`🎬 Server running on port ${PORT}`);
+  console.log(`🎬 Server running at http://localhost:${PORT}`);
 });
