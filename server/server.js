@@ -8,7 +8,7 @@ const cors = require("cors");
 const app = express();
 const server = http.createServer(app);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 4000;
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
 
 const io = new Server(server, {
