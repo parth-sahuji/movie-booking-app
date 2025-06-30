@@ -11,7 +11,7 @@ const Home = () => {
 
     useEffect(() => {
         axios
-            .get(`${BACKEND_URL}/api/shows`)
+            .get("https://movie-booking-app-backend-46kw.onrender.com/api/shows")
             .then((res) => {
                 if (Array.isArray(res.data)) {
                     setShows(res.data);
